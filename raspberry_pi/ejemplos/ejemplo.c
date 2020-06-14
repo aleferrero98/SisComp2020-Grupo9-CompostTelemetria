@@ -8,6 +8,7 @@
 #include <stdint.h>
 #define MAXTIMINGS	85
 #define DHTPIN		7
+
 int dht11_dat[5] = { 0, 0, 0, 0, 0 };
  
 void read_dht11_dat()
@@ -42,15 +43,20 @@ void read_dht11_dat()
  
 		if ( counter == 255 )
 			break;
- 
+ 		//ignore first 3 transitions
 		if ( (i >= 4) && (i % 2 == 0) )
 		{
 			dht11_dat[j / 8] <<= 1;
-			if ( counter > 16 )
+			if ( counter > 50 )
 				dht11_dat[j / 8] |= 1;
 			j++;
 		}
 	}
+	printf("dht11-0%d\n", dht11_dat[0]);
+	printf("dht11-1%d\n", dht11_dat[1]);
+	printf("dht11-2%d\n", dht11_dat[2]);
+	printf("dht11-3%d\n", dht11_dat[3]);
+	printf("dht11-4%d\n", dht11_dat[4]);
  
 	if ( (j >= 40) &&
 	     (dht11_dat[4] == ( (dht11_dat[0] + dht11_dat[1] + dht11_dat[2] + dht11_dat[3]) & 0xFF) ) )
@@ -73,7 +79,7 @@ int main( void )
 	while ( 1 )
 	{
 		read_dht11_dat();
-		delay( 1000 ); 
+		delay( 3000 ); 
 	}
  
 	return(0);
