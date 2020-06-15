@@ -63,7 +63,8 @@ static void rpi_gpio_set32(uint32_t mask, uint32_t val)
   gpio_base[RPI_GPSET0_INDEX] = val & mask;
 }
 
-static int dev_open(struct inode *inode, struct file *filep) {
+static int dev_open(struct inode *inode, struct file *filep) 
+{
   int retval;
   int *minor = (int *)kmalloc(sizeof(int), GFP_KERNEL);
   int major = MAJOR(inode->i_rdev);
@@ -74,12 +75,27 @@ static int dev_open(struct inode *inode, struct file *filep) {
   filep->private_data = (void *)minor;
 
   retval = gpio_map();
-  if (retval != 0) {
+  if (retval != 0) 
+  {
     printk(KERN_ERR "Can not open led.\n");
     return retval;
   }
   
   open_counter++;
+  return 0;
+}
+
+static int dev_release(struct inode *inode, struct file *filep) 
+{
+  kfree(filep->private_data);
+  open_counter--;
+  
+  if (open_counter <= 0) 
+  {
+    iounmap(gpio_base);
+    gpio_base = NULL;
+  }
+  
   return 0;
 }
 
@@ -90,7 +106,8 @@ static struct file_operations raspin_fops = {
     .read = dev_read,
 };
 
-static int register_dev(void) {
+static int register_dev(void) 
+{
   int retval;
   dev_t devno;
   int i;
@@ -160,7 +177,8 @@ static int __init init_mod(void)
     return 0;
 }
 
-static void __exit cleanup_mod(void) {
+static void __exit cleanup_mod(void) 
+{
   int i;
   dev_t devno;
   dev_t devno_top;
