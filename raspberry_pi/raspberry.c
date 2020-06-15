@@ -7,13 +7,73 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #define MAXTIMINGS	85
 #define DHTPIN		7	//pin del sensor DHT11
 #define PERIODO		3000  //1800000  //periodo de 30 min
 #define CANT_BYTES	5
 #define LIM_ERROR 	100
+#define TEMPERATURA	2
+#define HUMEDAD		1
+#define ERROR		-1
+
+int read_dht11_dat(int *dht11_dat);
+void sensar(int var);
+
+long int periodo = PERIODO;
+int remoto_activo = TRUE; 
  
+int main( void )
+{
+	printf( "Raspberry Pi wiringPi DHT11 Temperature test program\n" );
+	 
+	int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error;
+	if ( wiringPiSetup() == -1 )
+		exit(EXIT_FAILURE);
+
+	while ( 1 )
+	{
+		error = 0;
+		ret = read_dht11_dat(dht11_dat);
+		while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
+			ret = read_dht11_dat(dht11_dat);
+			error++;
+			delay( 10 );
+		}
+		delay(periodo); 
+	}
+ 
+	return EXIT_SUCCESS;
+}
+
+void set_periodo_muestreo(int num){
+	if(num > 0){
+		periodo = num;
+	}	
+}
+void toggle_control_remoto(void){
+	remoto_activo = !remoto_activo;
+}
+void sensar(int var, char *buf){
+	int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error = 0;
+	
+	ret = read_dht11_dat(dht11_dat);
+	while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
+		ret = read_dht11_dat(dht11_dat);
+		error++;
+		delay( 10 );
+	}
+	if(var == HUMEDAD){
+		//strcat(buf,)
+		
+	}else if(var == TEMPERATURA){
+			
+	}else if(var == ALL){
+		
+	}
+		
+}
 int read_dht11_dat(int *dht11_dat)
 {
 	uint8_t laststate	= HIGH;
@@ -68,27 +128,4 @@ int read_dht11_dat(int *dht11_dat)
 		return EXIT_FAILURE;
 	}
 
-}
- 
-int main( void )
-{
-	printf( "Raspberry Pi wiringPi DHT11 Temperature test program\n" );
-	 
-	int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error;
-	if ( wiringPiSetup() == -1 )
-		exit(EXIT_FAILURE);
-
-	while ( 1 )
-	{
-		error = 0;
-		ret = read_dht11_dat(dht11_dat);
-		while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
-			ret = read_dht11_dat(dht11_dat);
-			error++;
-			delay( 10 );
-		}
-		delay(PERIODO); 
-	}
- 
-	return EXIT_SUCCESS;
 }
