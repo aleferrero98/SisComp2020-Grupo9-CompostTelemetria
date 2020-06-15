@@ -17,6 +17,9 @@ static struct cdev *cdev_array = NULL;
 static struct class *class_raspin = NULL;
 static volatile uint32_t *gpio_base = NULL;
 
+static volatile int cdev_index = 0;
+static volatile int open_counter = 0;
+
 #define RPI_GPF_INPUT       0x00
 #define RPI_GPF_OUTPUT      0x01
 
@@ -58,6 +61,26 @@ static int rpi_gpio_function_set(int pin, uint32_t func)
 static void rpi_gpio_set32(uint32_t mask, uint32_t val)
 {
   gpio_base[RPI_GPSET0_INDEX] = val & mask;
+}
+
+static int dev_open(struct inode *inode, struct file *filep) {
+  int retval;
+  int *minor = (int *)kmalloc(sizeof(int), GFP_KERNEL);
+  int major = MAJOR(inode->i_rdev);
+  *minor = MINOR(inode->i_rdev);
+
+  printk(KERN_INFO "open request major:%d minor: %d \n", major, *minor);
+
+  filep->private_data = (void *)minor;
+
+  retval = gpio_map();
+  if (retval != 0) {
+    printk(KERN_ERR "Can not open led.\n");
+    return retval;
+  }
+  
+  open_counter++;
+  return 0;
 }
 
 static struct file_operations raspin_fops = {
