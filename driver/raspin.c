@@ -79,7 +79,7 @@ static int register_dev(void) {
     return retval;
   }
 
-  class_raspin = class_create(THIS_MODULE, DEVNAME_LED);
+  class_raspin = class_create(THIS_MODULE, DEVICE_NAME);
   if (IS_ERR(class_raspin)) 
   {
     return PTR_ERR(class_raspin);
@@ -136,3 +136,29 @@ static int __init init_mod(void)
     
     return 0;
 }
+
+static void __exit cleanup_mod(void) {
+  int i;
+  dev_t devno;
+  dev_t devno_top;
+
+  for (i = 0; i < NUM_DEV; i++) {
+    cdev_del(&(cdev_array[i]));
+  }
+
+  devno_top = MKDEV(MAJOR(dev), 0);
+  for (i = 0; i < NUM_DEV; i++) {
+    devno = MKDEV(MAJOR(dev), i);
+    device_destroy(class_raspin, devno);
+  }
+  unregister_chrdev_region(devno_top, NUM_DEV);
+
+  class_destroy(class_raspin);
+
+  kfree(cdev_array);
+  printk("modulo siendo removido a %lu\n", jiffies);
+}
+
+
+module_init(init_mod);
+module_exit(cleanup_mod);
