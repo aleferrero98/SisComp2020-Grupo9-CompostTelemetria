@@ -34,6 +34,8 @@ unsigned char dev_buf[MAX_BUFLEN];
 #define RPI_GPSET0_INDEX    7
 #define RPI_GPCLR0_INDEX    10
 
+#define RPI_GPIO_P2MASK     (uint32_t)0xffffffff
+
 #define RPI_REG_BASE        0x3f000000
 #define RPI_GPIO_OFFSET     0x200000
 #define RPI_GPIO_BASE       (RPI_REG_BASE + RPI_GPIO_OFFSET)
@@ -48,7 +50,7 @@ static int high = 1;
 
 static int gpio_map(void)
 {
-    if (gpio_base = NULL)
+    if (gpio_base == NULL)
         gpio_base = ioremap_nocache(RPI_GPIO_BASE, RPI_GPIO_SIZE);
     
     return 0;
@@ -68,7 +70,7 @@ static void rpi_gpio_set32(uint32_t mask, uint32_t val)
     gpio_base[RPI_GPSET0_INDEX] = val & mask;
 }
 
-static ssize_t led_write(struct file *flip, const char *buf, size_t count, loff_t *pos)
+static ssize_t dev_write(struct file *filp, const char *buf, size_t count, loff_t *pos)
 {
     char cval;
     unsigned int gpio;
@@ -91,10 +93,10 @@ static ssize_t led_write(struct file *flip, const char *buf, size_t count, loff_
                 gpio_set_value(gpio, low);
                 break;
             case 'e':
-                rpi_gpio_function_set(i, RPI_GPF_INPUT);
+                rpi_gpio_function_set(gpio, RPI_GPF_INPUT);
                 break;
             case 's':
-                rpi_gpio_function_set(i, RPI_GPF_OUTPUT);
+                rpi_gpio_function_set(gpio, RPI_GPF_OUTPUT);
                 break;
         }
         
@@ -117,9 +119,11 @@ static size_t dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
     for (retval = 0; retval < count; ++retval)
     {
         byte = '0' + gpio_get_value(gpio);
-        if (copy_to_user(buf + retval, byte, sizeof(byte)))
+        if (copy_to_user(buf + retval, &byte, sizeof(byte)))
+        {
             printk(KERN_INFO "fallo en copy_to_user\n");
             return -EFAULT;
+        }
     }
     
     return retval;
@@ -205,6 +209,7 @@ static int __init init_mod(void)
 {
     int retval;
     size_t size;
+    uint32_t i;
 
     printk(KERN_INFO "Cargando devices...\n");
     if (gpio_map() != 0) 
@@ -214,14 +219,13 @@ static int __init init_mod(void)
     }
 
     /* Iniciar todos los pines como salidas en bajo */
-    uint32_t i;
     for (i = 0; i < NUM_DEV; i++)
     {
         rpi_gpio_function_set(i, RPI_GPF_OUTPUT);
         rpi_gpio_set32(RPI_GPIO_P2MASK, 1 << i);
     }
 
-    size = size_of(struct cdev) * NUM_DEV_TOTAL;
+    size = sizeof(struct cdev) * NUM_DEV;
     cdev_array = (struct cdev *) kmalloc(size, GFP_KERNEL);
 
     if ((retval = register_dev()) != 0)
