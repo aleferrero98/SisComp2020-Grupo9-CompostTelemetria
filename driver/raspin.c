@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/gpio.h>
 
 MODULE_AUTHOR("Grupo 9");
 MODULE_DESCRIPTION("Character Device Driver para pines GPIO de Raspberry PI");
