@@ -20,6 +20,9 @@ static volatile uint32_t *gpio_base = NULL;
 static volatile int cdev_index = 0;
 static volatile int open_counter = 0;
 
+#define MAX_BUFLEN 64
+unsigned char dev_buf[MAX_BUFLEN];
+
 #define RPI_GPF_INPUT       0x00
 #define RPI_GPF_OUTPUT      0x01
 
@@ -40,6 +43,9 @@ static volatile int open_counter = 0;
 #define NUM_DEV             1
 
 #define DEVICE_NAME         "raspin"
+
+static int low = 0;
+static int high = 1;
 
 static int gpio_map(void)
 {
@@ -63,6 +69,63 @@ static void rpi_gpio_set32(uint32_t mask, uint32_t val)
   gpio_base[RPI_GPSET0_INDEX] = val & mask;
 }
 
+static ssize_t led_write(struct file *flip, const char *buf, size_t count, loff_t *pos)
+{
+    char cval;
+    unsigned int gpio;
+    
+    gpio = iminor(filp->f_path.dentry->d_inode);
+
+    if (count > 0) 
+    {
+        if (copy_from_user(&cval, buf, sizeof(char)))
+            return -EFAULT;
+
+        switch (cval) 
+        {
+            case '1':
+                //rpi_gpio_set32(RPI_GPIO_P2MASK, 1 << gpio);
+                gpio_set_value(gpio, high);
+                break;
+            case '0':
+                //rpi_gpio_clear32(RPI_GPIO_P2MASK, 1 << gpio);
+                gpio_set_value(gpio, low);
+                break;
+            case 'e':
+                rpi_gpio_function_set(i, RPI_GPF_INPUT);
+                break;
+            case 's':
+                rpi_gpio_function_set(i, RPI_GPF_OUTPUT);
+                break;
+        }
+        
+        return sizeof(char);
+    }
+  
+    return 0;
+}
+
+//TODO: testear! No está como en el driver que probamos. Si no funciona
+// ver cómo hacer para obtener el pin correspondiente al gpio que se esté
+// usando (o sea, al minor)
+static size_t dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+{
+    unsigned int gpio;
+    ssize_t retval;
+    char byte;
+    
+    gpio = iminor(filp->f_path.dentry->d_inode);
+    for (retval = 0; retval < count; ++retval)
+    {
+        byte = '0' + gpio_get_value(gpio);
+        if (copy_to_user(buf + retval, byte, sizeof(byte)))
+            printk(KERN_INFO "fallo en copy_to_user\n");
+            return -EFAULT;
+    }
+    
+    return retval;
+}
+
 static int dev_open(struct inode *inode, struct file *filep) 
 {
   int retval;
@@ -70,14 +133,14 @@ static int dev_open(struct inode *inode, struct file *filep)
   int major = MAJOR(inode->i_rdev);
   *minor = MINOR(inode->i_rdev);
 
-  printk(KERN_INFO "open request major:%d minor: %d \n", major, *minor);
+  printk(KERN_INFO "Petición de apertura major:%d minor: %d \n", major, *minor);
 
   filep->private_data = (void *)minor;
 
   retval = gpio_map();
   if (retval != 0) 
   {
-    printk(KERN_ERR "Can not open led.\n");
+    printk(KERN_ERR "No se pudo abrir GPIO.\n");
     return retval;
   }
   
