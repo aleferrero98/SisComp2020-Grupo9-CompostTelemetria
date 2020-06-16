@@ -22,39 +22,77 @@
 #define PIN_IN		"echo e > /dev/raspin"	
 #define SET_PIN		"echo 1 > /dev/raspin"
 #define CLR_PIN		"echo 0 > /dev/raspin"
+#define TEMP_LIM	10//80
+#define HUM_LIM		100
+#define T_HUM		100
+#define	T_TEMP		1000
+#define BUZZERGPIO	17
+
+typedef struct dato{
+	int entero;
+	int decimal;
+}dato;
 
 int read_dht11_dat(int *dht11_dat);
-void sensar(int var);
+void sensar(dato *hum, dato *temp);
 void pin_mode(int modo, int pin);
 void clear_pin(int pin);
 void set_pin(int pin);
+void set_valores_limites(int humedad, int temperatura);
+void sonar_alarma(int per);
 
 long int periodo = PERIODO;
 int remoto_activo = TRUE; 
+int temp_limite = TEMP_LIM;
+int hum_limite = HUM_LIM;
  
 int main( void )
 {
-	printf( "Raspberry Pi wiringPi DHT11 Temperature test program\n" );
+	printf("%s\n", "GRUPO 9: Sistema de monitorio del compost");
 	 
-	int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error;
-	if ( wiringPiSetup() == -1 )
+	//int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error;
+	dato humedad, temperatura;
+	if ( wiringPiSetup() == ERROR )
 		exit(EXIT_FAILURE);
 
 	while ( 1 )
 	{
-		error = 0;
+		/*error = 0;
 		ret = read_dht11_dat(dht11_dat);
 		while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
 			ret = read_dht11_dat(dht11_dat);
 			error++;
 			delay( 100 );
+		}*/
+		sensar(&humedad, &temperatura);
+		if(humedad.entero > hum_limite){
+			sonar_alarma(T_HUM);
 		}
+		if(temperatura.entero > temp_limite){
+			sonar_alarma(T_TEMP);
+		}
+		printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", humedad.entero, humedad.decimal, temperatura.entero, temperatura.decimal);
 		delay(periodo); 
 	}
  
 	return EXIT_SUCCESS;
 }
-
+void sonar_alarma(int per){
+	pin_mode(OUTPUT, BUZZERGPIO);
+	while(1){
+		set_pin(BUZZERGPIO);
+		clear_pin(BUZZERGPIO);
+		delay(per);
+	}
+}
+void set_valores_limites(int humedad, int temperatura){
+	if(humedad > 0){
+		hum_limite = humedad;
+	}
+	if(temperatura > 0){
+		temp_limite = temperatura;
+	}
+}
 void set_periodo_muestreo(int num){
 	if(num > 0){
 		periodo = num;
@@ -63,23 +101,22 @@ void set_periodo_muestreo(int num){
 void toggle_control_remoto(void){
 	remoto_activo = !remoto_activo;
 }
-void sensar(int var){
+void sensar(dato *hum, dato *temp){
 	int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error = 0;
 	
 	ret = read_dht11_dat(dht11_dat);
 	while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
 		ret = read_dht11_dat(dht11_dat);
 		error++;
-		delay( 10 );
+		delay( 100 );
 	}
-	if(var == HUMEDAD){
-		//strcat(buf,)
-		
-	}else if(var == TEMPERATURA){
-			
-	}else if(var == ALL){
-		
-	}
+	hum->entero = dht11_dat[0];
+	hum->decimal = dht11_dat[1];
+	temp->entero  = dht11_dat[2];
+	temp->decimal = dht11_dat[3];
+	//printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", hum->entero, hum->decimal, temp->entero, temp->decimal);
+	
+	//escribir BDD y devolver dato por BT
 		
 }
 /**
@@ -103,7 +140,7 @@ void pin_mode(int modo, int pin){
 		default:
 			fprintf(stderr, "%s\n", "Error en pinmode()");
 	}
-	printf("mode %s\n", comando);
+	//printf("mode %s\n", comando);
 }
 /**
  * Manda un 1 al pin de salida
@@ -114,7 +151,7 @@ void set_pin(int pin){
 	sprintf(num_pin, "%d", pin);
 	strcat(comando, num_pin);
 	system(comando);
-	printf("set %s\n", comando);
+	//printf("set %s\n", comando);
 }
 /**
  * Pone en 0 el pin de salida
@@ -125,7 +162,7 @@ void clear_pin(int pin){
 	sprintf(num_pin, "%d", pin);
 	strcat(comando, num_pin);
 	system(comando);
-	printf("clear %s\n", comando);
+	//printf("clear %s\n", comando);
 }
 
 int read_dht11_dat(int *dht11_dat)
@@ -176,8 +213,7 @@ int read_dht11_dat(int *dht11_dat)
 	//chequea que se hayan leido 40 bits(5 bytes) y verifica la checksum en el ultimo byte
 	if ( (j >= 40) && (dht11_dat[4] == ( (dht11_dat[0] + dht11_dat[1] + dht11_dat[2] + dht11_dat[3]) & 0xFF) ) )
 	{
-		printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n",
-			dht11_dat[0], dht11_dat[1], dht11_dat[2], dht11_dat[3]);
+		//printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", dht11_dat[0], dht11_dat[1], dht11_dat[2], dht11_dat[3]);
 			//printf("j true es%d",j);
 		return EXIT_SUCCESS;
 	}else  {
