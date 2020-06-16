@@ -73,51 +73,44 @@ static void rpi_gpio_set32(uint32_t mask, uint32_t val)
 
 static ssize_t dev_write(struct file *filp, const char *buf, size_t count, loff_t *pos)
 {
-    char kbuf[64];
+    char cval;
     unsigned int gpio;
-    printk(KERN_INFO "raspin: Escribiendo a dispositivo...\n");
-
+    
     gpio = iminor(filp->f_path.dentry->d_inode);
 
-    if (copy_from_user(kbuf, buf, len) != 0)
+    if (count > 0) 
     {
-        printk(KERN_ALERT "raspin: Problema en copy_from_user\n");
-        return -EFAULT;
-    } else
-    {
-        kbuf[len] = '\0';
-        if (strcmp(kbuf, "input") == 0)
-        {
-            printk(KERN_INFO "raspin: Seteando pin como entrada.\n");
-            gpio_direction_input(gpio);
-        }
-        else if (strcmp(kbuf, "output") == 0)
-        {
-            printk(KERN_INFO "raspin: Seteando pin como salida.\n");
-            gpio_direction_output(gpio, 0);
+        if (copy_from_user(&cval, buf, sizeof(char)))
+            return -EFAULT;
 
-        }
-        else if (strcmp(kbuf, "1") == 0)
+        switch (cval) 
         {
-            printk(KERN_INFO "raspin: Sacando un 1.\n");
-            gpio_set_value(gpio, 1);
+            case '1':
+                //rpi_gpio_set32(RPI_GPIO_P2MASK, 1 << gpio);
+                gpio_set_value(gpio, high);
+                break;
+            case '0':
+                //rpi_gpio_clear32(RPI_GPIO_P2MASK, 1 << gpio);
+                gpio_set_value(gpio, low);
+                break;
+            case 'e':
+                rpi_gpio_function_set(gpio, RPI_GPF_INPUT);
+                break;
+            case 's':
+                rpi_gpio_function_set(gpio, RPI_GPF_OUTPUT);
+                break;
         }
-        else if (strcmp(kbuf, "0") == 0)
-        {
-            printk(KERN_INFO "raspin: Sacando un 0.\n");
-            gpio_set_value(gpio, 0);
-        }
-        else
-        {
-            printk(KERN_ALERT "raspin: Comando no reconocido.\n");
-        }
+        
+        return sizeof(char);
     }
+  
+    return 0;
 }
 
 //TODO: testear! No está como en el driver que probamos. Si no funciona
 // ver cómo hacer para obtener el pin correspondiente al gpio que se esté
 // usando (o sea, al minor)
-static size_t dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
+static ssize_t dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
     unsigned int gpio;
     ssize_t retval;
@@ -129,7 +122,7 @@ static size_t dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos
         byte = '0' + gpio_get_value(gpio);
         if (copy_to_user(buf + retval, &byte, sizeof(byte)))
         {
-            printk(KERN_INFO "raspin: fallo en copy_to_user\n");
+            printk(KERN_INFO "fallo en copy_to_user\n");
             return -EFAULT;
         }
     }
@@ -144,14 +137,14 @@ static int dev_open(struct inode *inode, struct file *filep)
     int major = MAJOR(inode->i_rdev);
     *minor = MINOR(inode->i_rdev);
 
-    printk(KERN_INFO "raspin: Petición de apertura major:%d minor: %d \n", major, *minor);
+    printk(KERN_INFO "Petición de apertura major:%d minor: %d \n", major, *minor);
 
     filep->private_data = (void *)minor;
 
     retval = gpio_map();
     if (retval != 0) 
     {
-        printk(KERN_ERR "raspin: No se pudo abrir GPIO.\n");
+        printk(KERN_ERR "No se pudo abrir GPIO.\n");
         return retval;
     }
   
@@ -174,11 +167,10 @@ static int dev_release(struct inode *inode, struct file *filep)
 }
 
 static struct file_operations raspin_fops = {
-    .owner   = THIS_MODULE,
-    .open    = dev_open,
+    .open = dev_open,
     .release = dev_release,
-    .write   = dev_write,
-    .read    = dev_read,
+    .write = dev_write,
+    .read = dev_read,
 };
 
 static int register_dev(void) 
@@ -190,7 +182,7 @@ static int register_dev(void)
     retval = alloc_chrdev_region(&dev, 0, NUM_DEV, DEVICE_NAME);
 
     if (retval < 0) {
-        printk(KERN_ERR "raspin: fallo en alloc_chrdev_region.\n");
+        printk(KERN_ERR "alloc_chrdev_region falló.\n");
         return retval;
     }
 
@@ -205,7 +197,7 @@ static int register_dev(void)
         cdev_init(&(cdev_array[cdev_index]), &raspin_fops);
         cdev_array[cdev_index].owner = THIS_MODULE;
         if (cdev_add(&(cdev_array[cdev_index]), devno, 1) < 0) 
-            printk(KERN_ERR "raspin: fallo en cdev_add minor = %d\n", i); 
+            printk(KERN_ERR "fallo en cdev_add minor = %d\n", i); 
         else
             device_create(class_raspin, NULL, devno, NULL, DEVICE_NAME "%u", i);
     
@@ -218,13 +210,20 @@ static int __init init_mod(void)
 {
     int retval;
     size_t size;
+    uint32_t i;
 
-    printk(KERN_INFO "raspin: Inicializando...\n");
-
-    if (gpio_map() != 0)
+    printk(KERN_INFO "Cargando devices...\n");
+    if (gpio_map() != 0) 
     {
-        printk(KERN_ALERT "raspin: Fallo en el mapeo!\n");
+        printk(KERN_ALERT "No se pudieron mapear pines.\n");
         return -EBUSY;
+    }
+
+    /* Iniciar todos los pines como salidas en bajo */
+    for (i = 0; i < NUM_DEV; i++)
+    {
+        rpi_gpio_function_set(i, RPI_GPF_OUTPUT);
+        rpi_gpio_set32(RPI_GPIO_P2MASK, 1 << i);
     }
 
     size = sizeof(struct cdev) * NUM_DEV;
@@ -232,11 +231,9 @@ static int __init init_mod(void)
 
     if ((retval = register_dev()) != 0)
     {
-        printk(KERN_ALERT "raspin: Falló la inicialización!\n");
+        printk(KERN_ALERT "Falló el registro!\n");
         return retval;
     }
-
-    printk(KERN_INFO "raspin: Listo!");
     
     return 0;
 }
@@ -261,7 +258,7 @@ static void __exit cleanup_mod(void)
     class_destroy(class_raspin);
 
     kfree(cdev_array);
-    printk("raspin: modulo siendo removido a %lu\n", jiffies);
+    printk("modulo siendo removido a %lu\n", jiffies);
 }
 
 module_init(init_mod);
