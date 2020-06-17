@@ -8,6 +8,15 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include "../db/inc/db_rpi.h"
+
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+#include <sys/time.h>
 
 #define MAXTIMINGS	85
 #define DHTGPIO		4	//GPIO4 del sensor DHT11
@@ -22,11 +31,12 @@
 #define PIN_IN		"echo e > /dev/raspin"	
 #define SET_PIN		"echo 1 > /dev/raspin"
 #define CLR_PIN		"echo 0 > /dev/raspin"
-#define TEMP_LIM	10//80
-#define HUM_LIM		100
-#define T_HUM		100
+#define TEMP_LIM	50
+#define HUM_LIM		80
+#define T_HUM		500
 #define	T_TEMP		1000
-#define BUZZERGPIO	17
+#define BUZZERGPIO	26
+#define PIN			7
 
 typedef struct dato{
 	int entero;
@@ -41,48 +51,115 @@ void set_pin(int pin);
 void set_valores_limites(int humedad, int temperatura);
 void sonar_alarma(int per);
 
+int close_con(int socket);
+int open_inet_con(char *host_name, char *port);
+int accept_client_con(int socket);
+int open_inet_sock(char *port);
+
+
 long int periodo = PERIODO;
 int remoto_activo = TRUE; 
 int temp_limite = TEMP_LIM;
 int hum_limite = HUM_LIM;
+int sock_server;
+int sock_client;
  
-int main( void )
+int main(int argc, char *argv[])
 {
-	printf("%s\n", "GRUPO 9: Sistema de monitorio del compost");
-	 
-	//int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error;
+	printf("%s\n", "GRUPO 9: Sistema de monitoreo del compost");
+	char buffer[100];
 	dato humedad, temperatura;
 	if ( wiringPiSetup() == ERROR )
 		exit(EXIT_FAILURE);
-
+		
+	if(argc < 1){
+        exit(EXIT_FAILURE);
+    }
+    int ret;
+    sock_server = open_inet_sock(argv[1]);//nro puerto
+    if(sock_server == -1){
+        perror("No se pudo crear socket");
+        exit(EXIT_FAILURE);
+    }
+   sock_client = accept_client_con(sock_server);
+    if(sock_client == -1){
+        perror("No se pudo conectar con el cliente");
+        exit(EXIT_FAILURE);
+    }
+    struct timeval tv;
+    fd_set readfds;
+ 
+    tv.tv_sec = 60;
+    tv.tv_usec = 0;
+ 
+    FD_ZERO(&readfds);
+    FD_SET(sock_client, &readfds);
+ 
+    
+	printf("%s\n", "cliente acepto");
+	char *buff, hum[8], temp[8], aux1[512], *aux2;
+	int pid;
+    buff = malloc(512);
 	while ( 1 )
 	{
-		/*error = 0;
-		ret = read_dht11_dat(dht11_dat);
-		while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
-			ret = read_dht11_dat(dht11_dat);
-			error++;
-			delay( 100 );
-		}*/
-		sensar(&humedad, &temperatura);
-		if(humedad.entero > hum_limite){
-			sonar_alarma(T_HUM);
-		}
-		if(temperatura.entero > temp_limite){
-			sonar_alarma(T_TEMP);
-		}
+		//pid = fork();
+		//if(pid){
+		select(sock_client+1, &readfds, NULL, NULL, &tv);
+			if(FD_ISSET(sock_client, &readfds)){
+				memset(buff, '\0', 512);
+				recv(sock_client, buff, 512, 0);
+				switch (buff[0])
+				{
+					case 'A':
+						sensar(&humedad, &temperatura);
+						read_formated_last_entry(buff);
+						send(sock_client, buff, strlen(buff), 0);
+						break;
+					case 'U':
+						printf("%s\n", buff);
+						strcpy(aux1, &buff[1]);
+						strcpy(hum, strtok(aux1, "S"));
+						strcpy(temp, strtok(NULL, "F"));
+						printf("humedad lim: %s\ttemperatura lim: %s\n", hum, temp);
+						set_valores_limites(atoi(temp), atoi(temp));
+						break;
+					default:
+						printf("No debi recibir esto\n");
+						break;
+				}
+
+			}else{
+			
+				sensar(&humedad, &temperatura);
+				if(humedad.entero > hum_limite){
+					sonar_alarma(T_HUM);
+				}
+				if(temperatura.entero > temp_limite){
+					sonar_alarma(T_TEMP);
+				}
+		
+				read_formated_last_entry(buffer);
+			}
+		printf("%s\n", buffer);
 		printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", humedad.entero, humedad.decimal, temperatura.entero, temperatura.decimal);
-		delay(periodo); 
+		//delay(periodo); 
 	}
+	
+	close_con(sock_client);
+    close_con(sock_server);
  
 	return EXIT_SUCCESS;
 }
+
 void sonar_alarma(int per){
 	pin_mode(OUTPUT, BUZZERGPIO);
-	while(1){
+	int i=0;
+	while(i < 1000){
 		set_pin(BUZZERGPIO);
+		delay(per);
 		clear_pin(BUZZERGPIO);
 		delay(per);
+		i++;
 	}
 }
 void set_valores_limites(int humedad, int temperatura){
@@ -103,6 +180,7 @@ void toggle_control_remoto(void){
 }
 void sensar(dato *hum, dato *temp){
 	int dht11_dat[CANT_BYTES] = { 0, 0, 0, 0, 0 }, ret, error = 0;
+	float temperatura, humedad;
 	
 	ret = read_dht11_dat(dht11_dat);
 	while((ret == EXIT_FAILURE) && (error < LIM_ERROR)){ //hasta 100 mediciones erroneas insiste
@@ -114,9 +192,24 @@ void sensar(dato *hum, dato *temp){
 	hum->decimal = dht11_dat[1];
 	temp->entero  = dht11_dat[2];
 	temp->decimal = dht11_dat[3];
+
 	//printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", hum->entero, hum->decimal, temp->entero, temp->decimal);
 	
-	//escribir BDD y devolver dato por BT
+	//escribir BDD
+	if(hum->decimal < 10){
+		humedad = (float) hum->decimal/10;
+	}else{
+		humedad = (float) hum->decimal/100;
+	}
+	if(temp->decimal < 10){
+		temperatura = (float) temp->decimal/10;
+	}else{
+		temperatura = (float) temp->decimal/100;
+	}
+	
+	humedad += (float) hum->entero + hum->decimal/100;
+	temperatura += (float) temp->entero + temp->decimal/100;
+	write_new_entry(humedad, temperatura);
 		
 }
 /**
@@ -178,16 +271,16 @@ int read_dht11_dat(int *dht11_dat)
 	pin_mode(OUTPUT, DHTGPIO);
 	clear_pin(DHTGPIO);
 	delay( 18 );				//18 ms en bajo
-	digitalWrite( 7 , HIGH );
+	digitalWrite( PIN , HIGH );
 	//set_pin(DHTGPIO);
 	delayMicroseconds( 25 );//entre 20 y 40 dice el datasheet
-	pinMode( 7, INPUT );//lectura del pin
+	pinMode( PIN, INPUT );//lectura del pin
 	//pin_mode(INPUT, DHTGPIO);
 	
 	for ( i = 0; i < MAXTIMINGS; i++ )
 	{
 		counter = 0;
-		while ( digitalRead( 7 ) == laststate )
+		while ( digitalRead(PIN) == laststate )
 		{
 			counter++;
 			delayMicroseconds( 1 );
@@ -196,7 +289,7 @@ int read_dht11_dat(int *dht11_dat)
 				break;
 			}
 		}
-		laststate = digitalRead( 7 );
+		laststate = digitalRead(PIN);
  
 		if ( counter == 255 )
 			break;
@@ -223,3 +316,126 @@ int read_dht11_dat(int *dht11_dat)
 	}
 
 }
+
+/*
+/ Conecta con un servidor remoto a traves de socket INET
+*/
+int open_inet_con(char *host_name, char *port)
+{
+	struct sockaddr_in addr;
+	uint16_t port_num;
+	struct hostent *host;
+	int fd;
+
+    //cambiar:
+	port_num = (u_int16_t)atoi(port);
+
+	host = gethostbyname (host_name);
+	if (host == NULL)
+		return -1;
+
+	addr.sin_family = AF_INET;
+	addr.sin_addr.s_addr = ((struct in_addr *)(host->h_addr))->s_addr;
+	addr.sin_port = ntohs(port_num);
+	
+	fd = socket (AF_INET, SOCK_STREAM, 0);
+	if (fd == -1)
+		return -1;
+
+	if (connect (fd, (struct sockaddr *)&addr, sizeof (addr)) == -1)
+	{
+		return -1;
+	}
+
+	return fd;
+}
+
+int accept_client_con(int socket)
+{
+	socklen_t client_len;
+	struct sockaddr client_addr;
+	int client;
+
+	/*
+	* La llamada a la funcion accept requiere que el parametro 
+	* client_len contenga inicialmente el tamano de la
+	* estructura client que se le pase. A la vuelta de la
+	* funcion, esta variable contiene la longitud de la informacion
+	* util devuelta en client
+	*/
+	client_len = sizeof (client_addr);
+	client = accept (socket, &client_addr, &client_len);
+	if (client == -1)
+		return -1;
+
+	/*
+	* Se devuelve el fd en el que esta "enchufado" el client.
+	*/
+	return client;
+}
+
+/*
+* Abre un socket servidor de tipo AF_INET. Devuelve el fd
+*	del socket o -1 si hay probleamas
+* Se pasa como parametro el nombre del servicio. Debe estar dado
+* de alta en el fichero /etc/services
+*/
+int open_inet_sock(char *port)
+{
+	struct sockaddr_in addr;
+	uint16_t port_num;
+	int32_t fd;
+
+	/*
+	* se abre el socket
+	*/
+	fd = socket (AF_INET, SOCK_STREAM, 0);
+	if (fd == -1)
+	 	return -1;
+
+    port_num = (u_int16_t)atoi(port);
+	/*
+	* Se rellenan los campos de la estructura addr, necesaria
+	* para la llamada a la funcion bind()
+	*/
+	addr.sin_family = AF_INET;
+	addr.sin_port = ntohs(port_num);
+	addr.sin_addr.s_addr =INADDR_ANY;
+
+
+    int optval = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval));
+
+	if (bind (
+			fd, 
+			(struct sockaddr *)&addr, 
+			sizeof (addr)) == -1)
+	{
+		close (fd);
+		return -1;
+	}
+
+	/*
+	* Se avisa al sistema que comience a atender llamadas de clients
+	*/
+	if (listen (fd, 1) == -1)
+	{
+		close (fd);
+		return -1;
+	}
+
+	/*
+	* Se devuelve el fd del socket servidor
+	*/
+	return fd;
+}
+
+
+int close_con(int socket)
+{
+	shutdown(socket, SHUT_RDWR);
+	return 0;
+}
+
+
+
