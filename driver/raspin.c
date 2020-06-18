@@ -107,9 +107,6 @@ static ssize_t dev_write(struct file *filp, const char *buf, size_t count, loff_
     return 0;
 }
 
-//TODO: testear! No está como en el driver que probamos. Si no funciona
-// ver cómo hacer para obtener el pin correspondiente al gpio que se esté
-// usando (o sea, al minor)
 static ssize_t dev_read(struct file *filp, char *buf, size_t count, loff_t *f_pos)
 {
     unsigned int gpio;
