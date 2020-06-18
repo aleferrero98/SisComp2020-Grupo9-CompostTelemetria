@@ -1,26 +1,20 @@
-/**
- * https://www.circuitbasics.com/how-to-set-up-the-dht11-humidity-sensor-on-the-raspberry-pi/
- * gcc -o rpi raspberry.c -lwiringPi
- */
 
 #include <wiringPi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include "../db/inc/db_rpi.h"
-
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-
 #include <sys/time.h>
+#include "../db/inc/db_rpi.h"
 
 #define MAXTIMINGS	85
 #define DHTGPIO		4	//GPIO4 del sensor DHT11
-#define PERIODO		3000  //1800000  //periodo de 30 min
+#define PERIODO		1800000  //periodo de 30 min
 #define CANT_BYTES	5
 #define LIM_ERROR 	100
 #define TEMPERATURA	2
@@ -102,8 +96,6 @@ int main(int argc, char *argv[])
     buff = malloc(512);
 	while ( 1 )
 	{
-		//pid = fork();
-		//if(pid){
 		select(sock_client+1, &readfds, NULL, NULL, &tv);
 			if(FD_ISSET(sock_client, &readfds)){
 				memset(buff, '\0', 512);
@@ -116,7 +108,6 @@ int main(int argc, char *argv[])
 						send(sock_client, buff, strlen(buff), 0);
 						break;
 					case 'U':
-						printf("%s\n", buff);
 						strcpy(aux1, &buff[1]);
 						strcpy(hum, strtok(aux1, "S"));
 						strcpy(temp, strtok(NULL, "F"));
@@ -139,10 +130,13 @@ int main(int argc, char *argv[])
 				}
 		
 				read_formated_last_entry(buffer);
+				tv.tv_sec = 60;
+				tv.tv_usec = 0;
+
+				FD_ZERO(&readfds);
+				FD_SET(sock_client, &readfds);
 			}
-		printf("%s\n", buffer);
 		printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", humedad.entero, humedad.decimal, temperatura.entero, temperatura.decimal);
-		//delay(periodo); 
 	}
 	
 	close_con(sock_client);
@@ -154,7 +148,7 @@ int main(int argc, char *argv[])
 void sonar_alarma(int per){
 	pin_mode(OUTPUT, BUZZERGPIO);
 	int i=0;
-	while(i < 1000){
+	while(i < 10){
 		set_pin(BUZZERGPIO);
 		delay(per);
 		clear_pin(BUZZERGPIO);
@@ -192,10 +186,7 @@ void sensar(dato *hum, dato *temp){
 	hum->decimal = dht11_dat[1];
 	temp->entero  = dht11_dat[2];
 	temp->decimal = dht11_dat[3];
-
-	//printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", hum->entero, hum->decimal, temp->entero, temp->decimal);
 	
-	//escribir BDD
 	if(hum->decimal < 10){
 		humedad = (float) hum->decimal/10;
 	}else{
@@ -233,7 +224,6 @@ void pin_mode(int modo, int pin){
 		default:
 			fprintf(stderr, "%s\n", "Error en pinmode()");
 	}
-	//printf("mode %s\n", comando);
 }
 /**
  * Manda un 1 al pin de salida
@@ -244,7 +234,6 @@ void set_pin(int pin){
 	sprintf(num_pin, "%d", pin);
 	strcat(comando, num_pin);
 	system(comando);
-	//printf("set %s\n", comando);
 }
 /**
  * Pone en 0 el pin de salida
@@ -255,7 +244,6 @@ void clear_pin(int pin){
 	sprintf(num_pin, "%d", pin);
 	strcat(comando, num_pin);
 	system(comando);
-	//printf("clear %s\n", comando);
 }
 
 int read_dht11_dat(int *dht11_dat)
@@ -266,16 +254,12 @@ int read_dht11_dat(int *dht11_dat)
 
 	dht11_dat[0] = dht11_dat[1] = dht11_dat[2] = dht11_dat[3] = dht11_dat[4] = 0;
 
-	//pinMode( 7 , OUTPUT );
-	//digitalWrite( 7 , LOW );
 	pin_mode(OUTPUT, DHTGPIO);
 	clear_pin(DHTGPIO);
 	delay( 18 );				//18 ms en bajo
 	digitalWrite( PIN , HIGH );
-	//set_pin(DHTGPIO);
 	delayMicroseconds( 25 );//entre 20 y 40 dice el datasheet
 	pinMode( PIN, INPUT );//lectura del pin
-	//pin_mode(INPUT, DHTGPIO);
 	
 	for ( i = 0; i < MAXTIMINGS; i++ )
 	{
@@ -306,20 +290,17 @@ int read_dht11_dat(int *dht11_dat)
 	//chequea que se hayan leido 40 bits(5 bytes) y verifica la checksum en el ultimo byte
 	if ( (j >= 40) && (dht11_dat[4] == ( (dht11_dat[0] + dht11_dat[1] + dht11_dat[2] + dht11_dat[3]) & 0xFF) ) )
 	{
-		//printf("Humedad = %d.%d %% Temperatura = %d.%d °C\n", dht11_dat[0], dht11_dat[1], dht11_dat[2], dht11_dat[3]);
-			//printf("j true es%d",j);
 		return EXIT_SUCCESS;
 	}else  {
 		printf( "Data not good, skip\n" );
-		//printf("%d",j);
 		return EXIT_FAILURE;
 	}
 
 }
 
-/*
-/ Conecta con un servidor remoto a traves de socket INET
-*/
+/**
+ * Conecta con un servidor remoto a traves de socket INET
+ */
 int open_inet_con(char *host_name, char *port)
 {
 	struct sockaddr_in addr;
@@ -327,7 +308,6 @@ int open_inet_con(char *host_name, char *port)
 	struct hostent *host;
 	int fd;
 
-    //cambiar:
 	port_num = (u_int16_t)atoi(port);
 
 	host = gethostbyname (host_name);

@@ -43,7 +43,6 @@ int write_new_entry(float hum, float temp);
 
 /**
  * @brief devuelve un string que representa la entrada mas nueva 
- * 
  * @param dest_entry buffer donde se guarda al string
  * @return int 0 en caso de exito, -1 en caso de error
  */
@@ -75,7 +74,6 @@ int read_entry(struct entry *dest, long pos);
 
 /**
  * @brief una struct entry de la entrada mas nueva
- * 
  * @param dest donde se devuelve la entrada
  * @return int 0 en caso de exito, -1 en caso de error
  */
